@@ -28,6 +28,7 @@ mod http;
 mod poll;
 mod socket;
 mod tls;
+mod trace;
 
 use std::cell::RefCell;
 use std::fmt;
@@ -36,6 +37,9 @@ pub use channel::{channel_active, channel_poll, channel_push, info_log, sleep_se
 pub use host_request::{Header as HostHeader, HostRequest, HostResponse};
 pub use poll::poll_loop;
 use std::time::Duration;
+pub use trace::{
+    TraceScope, trace_event, trace_event_with_attrs, trace_scope, trace_scope_with_attrs,
+};
 
 thread_local! {
     static DNS_RESOLVER: RefCell<dns::DnsResolver> = RefCell::new(dns::DnsResolver::new());
@@ -252,12 +256,27 @@ fn execute_https_get(
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+fn host_request_kind(request: &HostRequest) -> &'static str {
+    match request {
+        HostRequest::HttpsGet { .. } => "https_get",
+        HostRequest::TcpConnect { .. } => "tcp_connect",
+    }
+}
+
 fn execute_host_request(request: HostRequest) -> Result<HostResponse, Error> {
     #[cfg(target_arch = "wasm32")]
+    let request_kind = host_request_kind(&request);
+    #[cfg(target_arch = "wasm32")]
     {
+        let mut trace = trace_scope_with_attrs("host_request", &[("kind", request_kind)]);
         let request_bytes = host_request::encode_request(&request)?;
+        trace.add_attr("request_bytes", request_bytes.len().to_string());
         let response_bytes = channel::network_roundtrip(&request_bytes)?;
-        host_request::decode_response(&response_bytes)
+        trace.add_attr("response_bytes", response_bytes.len().to_string());
+        let response = host_request::decode_response(&response_bytes)?;
+        trace.set_status("ok");
+        Ok(response)
     }
 
     #[cfg(not(target_arch = "wasm32"))]

@@ -1,4 +1,4 @@
-use crate::{Error, channel_push, sleep_secs};
+use crate::{Error, channel_push, sleep_secs, trace_event_with_attrs, trace_scope_with_attrs};
 
 /// Repeatedly fetch payloads and push them into the slide channel.
 ///
@@ -42,16 +42,39 @@ where
     R: PollRuntime,
     F: FnMut() -> Result<Vec<u8>, Error>,
 {
+    let interval_secs_str = interval_secs.to_string();
+    let backoff_str = (*backoff).to_string();
+    let mut poll_trace = trace_scope_with_attrs(
+        "poll_iteration",
+        &[
+            ("interval_secs", interval_secs_str.as_str()),
+            ("backoff_secs", backoff_str.as_str()),
+        ],
+    );
     match fetch() {
         Ok(payload) => {
+            let payload_len = payload.len().to_string();
+            let _push_trace =
+                trace_scope_with_attrs("channel_push", &[("bytes", payload_len.as_str())]);
             runtime.push(&payload);
             *backoff = interval_secs;
+            let sleep_for = interval_secs.to_string();
+            trace_event_with_attrs("poll_sleep", &[("seconds", sleep_for.as_str())]);
             runtime.sleep(interval_secs);
+            poll_trace.set_status("ok");
         }
-        Err(_) => {
+        Err(error) => {
             let sleep_for = (*backoff).max(1);
+            let sleep_for_str = sleep_for.to_string();
+            let error_str = error.to_string();
+            trace_event_with_attrs(
+                "poll_sleep",
+                &[("seconds", sleep_for_str.as_str()), ("reason", "backoff")],
+            );
             runtime.sleep(sleep_for);
             *backoff = sleep_for.saturating_mul(2).min(60);
+            poll_trace.set_status("error");
+            poll_trace.add_attr("error", error_str);
         }
     }
 }

@@ -6,7 +6,7 @@ Add it to a sidecar crate:
 
 ```toml
 [dependencies]
-VRX-64-sidecar = { git = "https://github.com/vzglyd/VRX-64-sidecar" }
+vzglyd_sidecar = { package = "VRX-64-sidecar", path = "../lume-sidecar" }
 ```
 
 Typical usage:
@@ -21,6 +21,20 @@ fn main() {
     });
 }
 ```
+
+## Tracing
+
+Sidecars can emit guest spans and events without depending on a host-specific SDK:
+
+```rust
+use vzglyd_sidecar::{trace_event, trace_scope};
+
+let mut scope = trace_scope("fetch");
+trace_event("channel_push");
+scope.set_status("ok");
+```
+
+The standard `poll_loop()` and host request path are already instrumented, so most sidecars only need slide-specific scopes around parsing or business logic.
 
 This crate is intended for the `wasm32-wasip1` target used by VZGLYD sidecars.
 
