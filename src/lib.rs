@@ -39,6 +39,7 @@ pub use poll::poll_loop;
 use std::time::Duration;
 pub use trace::{
     TraceScope, trace_event, trace_event_with_attrs, trace_scope, trace_scope_with_attrs,
+    traced_main_entrypoint,
 };
 
 thread_local! {
@@ -150,6 +151,27 @@ pub fn https_get_conditional(
     let last_modified = response.last_modified.clone();
     let body = http::successful_body(response)?;
     Ok((body, etag, last_modified))
+}
+
+/// Export a traced `main` function for wasm sidecars.
+///
+/// The generated `main` wraps the provided zero-argument function in a long-lived top-level
+/// trace span, while the sidecar body remains free to emit more specific spans for fetches,
+/// polling, and channel work.
+#[macro_export]
+macro_rules! export_traced_main {
+    ($main_fn:path $(,)?) => {
+        #[cfg(target_arch = "wasm32")]
+        fn main() {
+            $crate::traced_main_entrypoint("sidecar_main", $main_fn);
+        }
+    };
+    ($name:literal, $main_fn:path $(,)?) => {
+        #[cfg(target_arch = "wasm32")]
+        fn main() {
+            $crate::traced_main_entrypoint($name, $main_fn);
+        }
+    };
 }
 
 /// Read an environment variable from the sidecar process.

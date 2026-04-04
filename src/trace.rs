@@ -161,9 +161,20 @@ pub fn trace_event_with_attrs(name: &str, attrs: &[(&str, &str)]) {
     }
 }
 
+/// Run a sidecar main loop inside a standard top-level trace span.
+#[doc(hidden)]
+pub fn traced_main_entrypoint<F>(name: &str, main_fn: F)
+where
+    F: FnOnce(),
+{
+    let mut trace = trace_scope(name);
+    main_fn();
+    trace.set_status("ok");
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{encode_end_payload, encode_payload};
+    use super::{encode_end_payload, encode_payload, traced_main_entrypoint};
 
     #[test]
     fn encodes_trace_payload_with_attrs() {
@@ -179,5 +190,14 @@ mod tests {
         let json = String::from_utf8(payload).expect("utf8");
         assert!(json.contains("\"status\":\"ok\""));
         assert!(json.contains("\"cached\":\"false\""));
+    }
+
+    #[test]
+    fn traced_main_runs_inner_closure() {
+        let mut called = false;
+        traced_main_entrypoint("sidecar_main", || {
+            called = true;
+        });
+        assert!(called);
     }
 }

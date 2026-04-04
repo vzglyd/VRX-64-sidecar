@@ -24,7 +24,19 @@ fn main() {
 
 ## Tracing
 
-Sidecars can emit guest spans and events without depending on a host-specific SDK:
+Use `export_traced_main!` for the top-level sidecar entrypoint so every run emits a stable
+`sidecar.main` guest span automatically:
+
+```rust
+fn sidecar_main() {
+    poll_loop(300, || Ok(Vec::new()));
+}
+
+#[cfg(target_arch = "wasm32")]
+vzglyd_sidecar::export_traced_main!("example_sidecar", sidecar_main);
+```
+
+Sidecars can also emit finer-grained guest spans and events without depending on a host-specific SDK:
 
 ```rust
 use vzglyd_sidecar::{trace_event, trace_scope};
