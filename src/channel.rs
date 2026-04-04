@@ -24,16 +24,18 @@ unsafe extern "C" {
 
 /// Push a new payload into the shared sidecar-to-slide channel.
 ///
-/// On the WASI target this forwards to the host import. On non-WASM targets it is a no-op so
-/// the crate can still be unit-tested locally.
-pub fn channel_push(data: &[u8]) {
+/// Returns the raw host status code (0 = success). On non-WASM targets it always succeeds (0).
+pub fn channel_push(data: &[u8]) -> i32 {
     #[cfg(target_arch = "wasm32")]
     unsafe {
-        let _ = host_channel_push(data.as_ptr(), data.len() as i32);
+        return host_channel_push(data.as_ptr(), data.len() as i32);
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    let _ = data;
+    {
+        let _ = data;
+        0
+    }
 }
 
 /// Poll the shared channel for the latest payload.

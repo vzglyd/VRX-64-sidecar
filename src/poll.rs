@@ -21,15 +21,15 @@ where
 }
 
 trait PollRuntime {
-    fn push(&self, data: &[u8]);
+    fn push(&self, data: &[u8]) -> i32;
     fn sleep(&self, secs: u32);
 }
 
 struct HostRuntime;
 
 impl PollRuntime for HostRuntime {
-    fn push(&self, data: &[u8]) {
-        channel_push(data);
+    fn push(&self, data: &[u8]) -> i32 {
+        channel_push(data)
     }
 
     fn sleep(&self, secs: u32) {
@@ -53,11 +53,24 @@ where
     );
     match fetch() {
         Ok(payload) => {
-            let payload_len = payload.len().to_string();
-            let _push_trace =
-                trace_scope_with_attrs("channel_push", &[("bytes", payload_len.as_str())]);
-            runtime.push(&payload);
-            *backoff = interval_secs;
+        let payload_len = payload.len().to_string();
+        loop {
+            let mut push_scope = trace_scope_with_attrs(
+                "channel_push",
+                &[("bytes", payload_len.as_str())],
+            );
+            let status = runtime.push(&payload);
+            if status == 0 {
+                push_scope.set_status("ok");
+                break;
+            }
+            let status_code = status.to_string();
+            push_scope.set_status("retry");
+            push_scope.add_attr("status_code", status_code.as_str());
+            trace_event_with_attrs("channel_push_retry", &[("status", status_code.as_str())]);
+            runtime.sleep(1);
+        }
+        *backoff = interval_secs;
             let sleep_for = interval_secs.to_string();
             trace_event_with_attrs("poll_sleep", &[("seconds", sleep_for.as_str())]);
             runtime.sleep(interval_secs);
@@ -87,7 +100,7 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     enum Action {
-        Push(Vec<u8>),
+        Push((Vec<u8>, i32)),
         Sleep(u32),
     }
 
@@ -104,8 +117,11 @@ mod tests {
     }
 
     impl PollRuntime for MockRuntime {
-        fn push(&self, data: &[u8]) {
-            self.actions.borrow_mut().push(Action::Push(data.to_vec()));
+        fn push(&self, data: &[u8]) -> i32 {
+            self.actions
+                .borrow_mut()
+                .push(Action::Push((data.to_vec(), 0)));
+            0
         }
 
         fn sleep(&self, secs: u32) {
@@ -128,7 +144,7 @@ mod tests {
         assert_eq!(fetch_calls.get(), 1);
         assert_eq!(
             runtime.actions.into_inner(),
-            vec![Action::Push(b"payload".to_vec()), Action::Sleep(5)]
+            vec![Action::Push((b"payload".to_vec(), 0)), Action::Sleep(5)]
         );
         assert_eq!(backoff, 5);
     }
@@ -143,7 +159,7 @@ mod tests {
 
         assert_eq!(
             runtime.actions.into_inner(),
-            vec![Action::Push(b"payload".to_vec()), Action::Sleep(5)]
+            vec![Action::Push((b"payload".to_vec(), 0)), Action::Sleep(5)]
         );
         assert_eq!(backoff, 5);
     }
