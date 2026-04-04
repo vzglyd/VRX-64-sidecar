@@ -1,5 +1,7 @@
 use crate::{Error, channel_push, sleep_secs, trace_event_with_attrs, trace_scope_with_attrs};
 
+const PUSH_RETRY_LIMIT: u32 = 3;
+
 /// Repeatedly fetch payloads and push them into the slide channel.
 ///
 /// The loop never returns. Successful fetches sleep for `interval_secs`, while failures back off
@@ -53,24 +55,35 @@ where
     );
     match fetch() {
         Ok(payload) => {
-        let payload_len = payload.len().to_string();
-        loop {
-            let mut push_scope = trace_scope_with_attrs(
-                "channel_push",
-                &[("bytes", payload_len.as_str())],
-            );
-            let status = runtime.push(&payload);
-            if status == 0 {
-                push_scope.set_status("ok");
-                break;
+            let payload_len = payload.len().to_string();
+            let mut pushed = false;
+            for attempt in 0..PUSH_RETRY_LIMIT {
+                let mut push_scope = trace_scope_with_attrs(
+                    "channel_push",
+                    &[
+                        ("bytes", payload_len.as_str()),
+                        ("attempt", (attempt + 1).to_string().as_str()),
+                    ],
+                );
+                let status = runtime.push(&payload);
+                if status == 0 {
+                    push_scope.set_status("ok");
+                    pushed = true;
+                    break;
+                }
+                let status_code = status.to_string();
+                push_scope.set_status("retry");
+                push_scope.add_attr("status_code", status_code.as_str());
+                trace_event_with_attrs("channel_push_retry", &[("status", status_code.as_str())]);
+                runtime.sleep(1);
             }
-            let status_code = status.to_string();
-            push_scope.set_status("retry");
-            push_scope.add_attr("status_code", status_code.as_str());
-            trace_event_with_attrs("channel_push_retry", &[("status", status_code.as_str())]);
-            runtime.sleep(1);
-        }
-        *backoff = interval_secs;
+            if !pushed {
+                trace_event_with_attrs(
+                    "channel_push_failed",
+                    &[("bytes", payload_len.as_str())],
+                );
+            }
+            *backoff = interval_secs;
             let sleep_for = interval_secs.to_string();
             trace_event_with_attrs("poll_sleep", &[("seconds", sleep_for.as_str())]);
             runtime.sleep(interval_secs);
