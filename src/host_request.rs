@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, perform_get, socket, DNS_RESOLVER};
+use crate::{DNS_RESOLVER, Error, perform_get, socket};
 
 const WIRE_VERSION: u8 = 1;
 

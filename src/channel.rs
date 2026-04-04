@@ -100,8 +100,7 @@ pub(crate) fn network_roundtrip(request: &[u8]) -> Result<Vec<u8>, Error> {
         }
 
         let mut response = vec![0u8; response_len as usize];
-        let read_status =
-            host_network_response_read(response.as_mut_ptr(), response.len() as i32);
+        let read_status = host_network_response_read(response.as_mut_ptr(), response.len() as i32);
         if read_status < 0 {
             return Err(Error::Io(format!(
                 "host network_response_read failed with status {read_status}"
