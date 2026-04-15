@@ -25,6 +25,7 @@ mod channel;
 mod dns;
 pub mod host_request;
 mod http;
+pub mod manifest;
 mod poll;
 mod socket;
 mod tls;
@@ -33,8 +34,12 @@ mod trace;
 use std::cell::RefCell;
 use std::fmt;
 
-pub use channel::{channel_active, channel_poll, channel_push, info_log, sleep_secs};
+pub use channel::{
+    announce_sleep, artifact_publish, channel_active, channel_poll, channel_push, info_log,
+    publish_normalized, publish_output, publish_raw, register_manifest, sleep_secs,
+};
 pub use host_request::{Header as HostHeader, HostRequest, HostResponse};
+pub use manifest::{EnvVarSpec, PersistenceAuthority, PollStrategy, SidecarManifest};
 pub use poll::poll_loop;
 use std::time::Duration;
 pub use trace::{
