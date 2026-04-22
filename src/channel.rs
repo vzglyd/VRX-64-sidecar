@@ -1,6 +1,3 @@
-use std::time::Duration;
-
-#[cfg(target_arch = "wasm32")]
 use crate::Error;
 
 #[cfg(target_arch = "wasm32")]
@@ -20,6 +17,15 @@ unsafe extern "C" {
     fn host_network_response_len() -> i32;
     #[link_name = "network_response_read"]
     fn host_network_response_read(ptr: *mut u8, len: i32) -> i32;
+    /// Return the byte length of the current host-provided sidecar params JSON.
+    #[link_name = "params_len"]
+    fn host_params_len() -> i32;
+    /// Read the current host-provided sidecar params JSON into guest memory.
+    #[link_name = "params_read"]
+    fn host_params_read(ptr: *mut u8, len: i32) -> i32;
+    /// Sleep in the host so the host can interrupt the wait for force-refresh.
+    #[link_name = "sleep_ms"]
+    fn host_sleep_ms(duration_ms: i64) -> i32;
     /// Announce to the host that the sidecar is about to sleep for `duration_ms` milliseconds.
     /// Enables the TUI countdown timer. Returns 0 on success.
     #[link_name = "announce_sleep"]
@@ -27,7 +33,12 @@ unsafe extern "C" {
     /// Publish a named artifact. `kind` is a UTF-8 string (e.g. `"raw_source_payload"`).
     /// Returns 0 on success.
     #[link_name = "artifact_publish"]
-    fn host_artifact_publish(kind_ptr: *const u8, kind_len: i32, data_ptr: *const u8, data_len: i32) -> i32;
+    fn host_artifact_publish(
+        kind_ptr: *const u8,
+        kind_len: i32,
+        data_ptr: *const u8,
+        data_len: i32,
+    ) -> i32;
     /// Register the sidecar manifest with the host. Call once at startup.
     /// Returns 0 on success.
     #[link_name = "register_manifest"]
@@ -82,7 +93,52 @@ pub fn channel_active() -> bool {
 
 /// Sleep for a whole number of seconds.
 pub fn sleep_secs(secs: u32) {
-    std::thread::sleep(Duration::from_secs(u64::from(secs)));
+    #[cfg(target_arch = "wasm32")]
+    unsafe {
+        let _ = host_sleep_ms(i64::from(secs) * 1000);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    std::thread::sleep(std::time::Duration::from_secs(u64::from(secs)));
+}
+
+/// Read the current sidecar params JSON supplied by the host.
+///
+/// Returns `Ok(None)` when the host has no params for this sidecar. On WASM targets, the value can
+/// change between poll iterations, so sidecars should call this near the start of each fetch cycle
+/// when they want live-editable configuration.
+///
+/// # Errors
+///
+/// Returns [`Error`] if the host reports an invalid params length or the params buffer cannot be
+/// read.
+pub fn runtime_params_bytes() -> Result<Option<Vec<u8>>, Error> {
+    #[cfg(target_arch = "wasm32")]
+    unsafe {
+        let len = host_params_len();
+        if len < 0 {
+            return Err(Error::Io(format!(
+                "host params_len failed with status {len}"
+            )));
+        }
+        if len == 0 {
+            return Ok(None);
+        }
+        let mut bytes = vec![0u8; len as usize];
+        let read = host_params_read(bytes.as_mut_ptr(), bytes.len() as i32);
+        if read < 0 {
+            return Err(Error::Io(format!(
+                "host params_read failed with status {read}"
+            )));
+        }
+        bytes.truncate(read as usize);
+        return Ok(Some(bytes));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        Ok(None)
+    }
 }
 
 /// Emit an informational log message through the VZGLYD host.

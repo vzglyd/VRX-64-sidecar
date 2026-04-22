@@ -69,6 +69,67 @@ pub struct EnvVarSpec {
     pub description: String,
 }
 
+// ── Runtime parameter specification ─────────────────────────────────
+
+/// Parameter schema for sidecar fetch/runtime configuration.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct SidecarParamsSchema {
+    /// Parameter field definitions.
+    #[serde(default)]
+    pub fields: Vec<SidecarParamField>,
+}
+
+/// A single sidecar parameter field.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidecarParamField {
+    /// Unique key used to identify the parameter.
+    pub key: String,
+    /// Value type.
+    #[serde(rename = "type")]
+    pub kind: SidecarParamType,
+    /// Whether the parameter must be supplied.
+    #[serde(default)]
+    pub required: bool,
+    /// Human-readable label for UI.
+    #[serde(default)]
+    pub label: Option<String>,
+    /// Help text for UI.
+    #[serde(default)]
+    pub help: Option<String>,
+    /// Default value (must match `kind`).
+    #[serde(default)]
+    pub default: Option<serde_json::Value>,
+    /// Allowed values (empty means unrestricted).
+    #[serde(default)]
+    pub options: Vec<SidecarParamOption>,
+}
+
+/// One entry in a parameter field's option list.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidecarParamOption {
+    /// The option value (must match the field's `kind`).
+    pub value: serde_json::Value,
+    /// Human-readable label for UI.
+    #[serde(default)]
+    pub label: Option<String>,
+}
+
+/// Supported parameter value types.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SidecarParamType {
+    /// UTF-8 string value.
+    String,
+    /// Integer numeric value.
+    Integer,
+    /// Floating-point numeric value.
+    Number,
+    /// Boolean value.
+    Boolean,
+    /// Arbitrary JSON value.
+    Json,
+}
+
 // ── Manifest ─────────────────────────────────────────────────────────
 
 /// Full self-description of a sidecar module.
@@ -94,6 +155,7 @@ pub struct EnvVarSpec {
 ///             name: "COINBASE_API_KEY".to_string(),
 ///             description: "API key for higher rate limits".to_string(),
 ///         }],
+///         params: None,
 ///         capabilities_needed: vec!["https_get".to_string()],
 ///         poll_strategy: Some(PollStrategy::FixedInterval { interval_secs: 60 }),
 ///         artifact_types: vec!["published_output".to_string()],
@@ -127,6 +189,13 @@ pub struct SidecarManifest {
     /// Environment variables the sidecar accepts optionally.
     #[serde(default)]
     pub optional_env_vars: Vec<EnvVarSpec>,
+    /// JSON parameters this sidecar accepts through `vzglyd_configure`.
+    ///
+    /// Use these for per-slide/per-entry fetch configuration such as API keys,
+    /// location IDs, usernames, endpoint choices, or other values that should
+    /// be editable by the playlist author.
+    #[serde(default)]
+    pub params: Option<SidecarParamsSchema>,
     /// Host capabilities the sidecar needs, e.g. `["https_get"]`.
     #[serde(default)]
     pub capabilities_needed: Vec<String>,

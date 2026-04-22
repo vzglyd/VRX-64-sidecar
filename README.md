@@ -1,6 +1,10 @@
 # `VRX-64-sidecar`
 
-`VRX-64-sidecar` is the standard library for VZGLYD sidecars: small `wasm32-wasip1` programs that fetch live data and push it to a paired slide.
+Archived for reference only. Active VRX-64 development no longer ships or runs sidecars; live data acquisition now lives outside the host runtime, with tools such as `brrmmmm` writing watched JSON result files for `data_path`.
+
+The material below documents the retired sidecar approach.
+
+## Historical Usage
 
 Add it to a sidecar crate:
 
@@ -20,6 +24,45 @@ fn main() {
         Ok(body.into_bytes())
     });
 }
+```
+
+Sidecars can advertise editable JSON configuration in their registered manifest.
+Hosts pass those values through the same optional `vzglyd_configure` buffer used
+by slides, but the values are scoped to the sidecar's fetching behavior:
+
+```rust
+use vzglyd_sidecar::{
+    EnvVarSpec, PollStrategy, SidecarManifest, SidecarParamField, SidecarParamType,
+    SidecarParamsSchema, register_manifest,
+};
+
+register_manifest(&SidecarManifest {
+    schema_version: 1,
+    logical_id: "weather".into(),
+    name: "Weather".into(),
+    description: "Fetches forecast data".into(),
+    run_modes: vec!["managed_polling".into()],
+    state_persistence: Default::default(),
+    required_env_vars: vec![],
+    optional_env_vars: vec![EnvVarSpec {
+        name: "WEATHER_API_KEY".into(),
+        description: "Fallback API key supplied by the host environment".into(),
+    }],
+    params: Some(SidecarParamsSchema {
+        fields: vec![SidecarParamField {
+            key: "api_key".into(),
+            kind: SidecarParamType::String,
+            required: false,
+            label: Some("API key".into()),
+            help: Some("Overrides the default empty API key for this playlist entry".into()),
+            default: Some(serde_json::json!("")),
+            options: vec![],
+        }],
+    }),
+    capabilities_needed: vec!["https_get".into()],
+    poll_strategy: Some(PollStrategy::FixedInterval { interval_secs: 300 }),
+    artifact_types: vec!["published_output".into()],
+});
 ```
 
 ## Tracing

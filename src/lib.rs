@@ -36,10 +36,14 @@ use std::fmt;
 
 pub use channel::{
     announce_sleep, artifact_publish, channel_active, channel_poll, channel_push, info_log,
-    publish_normalized, publish_output, publish_raw, register_manifest, sleep_secs,
+    publish_normalized, publish_output, publish_raw, register_manifest, runtime_params_bytes,
+    sleep_secs,
 };
 pub use host_request::{Header as HostHeader, HostRequest, HostResponse};
-pub use manifest::{EnvVarSpec, PersistenceAuthority, PollStrategy, SidecarManifest};
+pub use manifest::{
+    EnvVarSpec, PersistenceAuthority, PollStrategy, SidecarManifest, SidecarParamField,
+    SidecarParamOption, SidecarParamType, SidecarParamsSchema,
+};
 pub use poll::poll_loop;
 use std::time::Duration;
 pub use trace::{
